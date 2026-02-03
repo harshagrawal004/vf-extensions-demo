@@ -4,104 +4,118 @@ export const DisableInputExtension = {
   name: 'DisableInput',
   type: 'effect',
   match: ({ trace }) =>
-    trace.type === 'ext_disableInput' || trace.payload?.name === 'ext_disableInput',
+    trace.type === 'ext_disableInput' ||
+    trace.payload?.name === 'ext_disableInput',
   effect: ({ trace }) => {
     const { isDisabled } = trace.payload
 
     function disableInput() {
-      const chatDiv = document.getElementById('voiceflow-chat')
+      // Find all elements that have a shadowRoot
+      const hosts = [...document.querySelectorAll('*')].filter(
+        (el) => el.shadowRoot
+      )
 
-      if (chatDiv) {
-        const shadowRoot = chatDiv.shadowRoot
-        if (shadowRoot) {
-          const v3InputContainerClass = '.vfrc-input-container';
-          const chatInput = shadowRoot.querySelector(v3InputContainerClass) || shadowRoot.querySelector('.vfrc-chat-input');
-          const textarea = shadowRoot.querySelector(v3InputContainerClass + ' textarea') || shadowRoot.querySelector(
-            'textarea[id^="vf-chat-input--"]'
-          );
-          const v3Buttons = shadowRoot.querySelectorAll(v3InputContainerClass + ' button');
-          const button = shadowRoot.querySelector('.vfrc-chat-input--button')
+      let textarea = null
+      let sendBtn = null
+      let root = null
 
-          if (chatInput && textarea && (v3Buttons.length > 0 || button)) {
-            // Add a style tag if it doesn't exist
-            let styleTag = shadowRoot.querySelector('#vf-disable-input-style')
-            if (!styleTag) {
-              styleTag = document.createElement('style')
-              styleTag.id = 'vf-disable-input-style'
-              styleTag.textContent = `
-                .vf-no-border, .vf-no-border * {
-                  border: none !important;
-                }
-                .vf-hide-button {
-                  display: none !important;
-                }
-              `
-              shadowRoot.appendChild(styleTag)
-            }
-
-            function updateInputState() {
-              textarea.disabled = isDisabled
-              if (!isDisabled) {
-                textarea.placeholder = 'Message...'
-                chatInput.classList.remove('vf-no-border')
-                if (v3Buttons.length > 0) {
-                  v3Buttons.forEach(b => b.classList.remove('vf-hide-button'));
-                } else {
-                  button.classList.remove('vf-hide-button')
-                }
-                // Restore original value getter/setter
-                Object.defineProperty(
-                  textarea,
-                  'value',
-                  originalValueDescriptor
-                )
-              } else {
-                textarea.placeholder = ''
-                chatInput.classList.add('vf-no-border')
-                if (v3Buttons.length > 0) {
-                  v3Buttons.forEach(b => b.classList.add('vf-hide-button'));
-                  textarea.style.backgroundColor = 'transparent';
-                } else {
-                  button.classList.add('vf-hide-button')
-                }
-                Object.defineProperty(textarea, 'value', {
-                  get: function () {
-                    return ''
-                  },
-                  configurable: true,
-                })
-              }
-
-              // Trigger events to update component state
-              textarea.dispatchEvent(
-                new Event('input', { bubbles: true, cancelable: true })
-              )
-              textarea.dispatchEvent(
-                new Event('change', { bubbles: true, cancelable: true })
-              )
-            }
-
-            // Store original value descriptor
-            const originalValueDescriptor = Object.getOwnPropertyDescriptor(
-              HTMLTextAreaElement.prototype,
-              'value'
-            )
-
-            // Initial update
-            updateInputState()
-          } else {
-            console.error('Chat input, textarea, or button not found')
-          }
-        } else {
-          console.error('Shadow root not found')
+      // Search through each shadow root to find the textarea
+      for (const host of hosts) {
+        root = host.shadowRoot
+        textarea = root.querySelector('textarea.vfrc-chat-input')
+        if (textarea) {
+          sendBtn = root.querySelector('#vfrc-send-message')
+          break
         }
-      } else {
-        console.error('Chat div not found')
       }
+
+      if (!textarea) {
+        console.error('DisableInputExtension: Voiceflow textarea not found')
+        return
+      }
+
+      if (!root) {
+        console.error('DisableInputExtension: Shadow root not found')
+        return
+      }
+
+      // Add or update style tag for visual disabled state
+      let styleTag = root.querySelector('#vf-disable-input-style')
+      if (!styleTag) {
+        styleTag = document.createElement('style')
+        styleTag.id = 'vf-disable-input-style'
+        root.appendChild(styleTag)
+      }
+
+      // Store original value descriptor
+      const originalValueDescriptor = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        'value'
+      )
+
+      function updateInputState() {
+        if (isDisabled) {
+          // Disable: apply visual styles and logical disable
+          styleTag.textContent = `
+              textarea.vfrc-chat-input {
+                pointer-events: none !important;
+                opacity: 0.4 !important;
+                cursor: default !important;
+                caret-color: transparent !important;
+              }
+              #vfrc-send-message {
+                pointer-events: none !important;
+                opacity: 0.35 !important;
+                cursor: default !important;
+              }
+            `
+
+          // Logical disable
+          textarea.readOnly = true
+          textarea.disabled = true
+          if (sendBtn) {
+            sendBtn.disabled = true
+          }
+
+          // Clear the value
+          Object.defineProperty(textarea, 'value', {
+            get: function () {
+              return ''
+            },
+            set: function () {},
+            configurable: true,
+          })
+          textarea.value = ''
+        } else {
+          // Enable: remove visual styles and logical enable
+          styleTag.textContent = ''
+
+          // Logical enable
+          textarea.readOnly = false
+          textarea.disabled = false
+          if (sendBtn) {
+            sendBtn.disabled = false
+          }
+
+          // Restore original value getter/setter
+          Object.defineProperty(textarea, 'value', originalValueDescriptor)
+        }
+
+        // Trigger events to update component state
+        textarea.dispatchEvent(
+          new Event('input', { bubbles: true, cancelable: true })
+        )
+        textarea.dispatchEvent(
+          new Event('change', { bubbles: true, cancelable: true })
+        )
+      }
+
+      // Initial update
+      updateInputState()
     }
 
     disableInput()
-  },
+  }
 }
 
 export const FormExtension = {
